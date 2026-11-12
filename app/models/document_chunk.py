@@ -4,6 +4,7 @@ from datetime import datetime
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     Text,
     func,
@@ -18,6 +19,15 @@ class DocumentChunk(Base):
     """A searchable text section extracted from a document."""
 
     __tablename__ = "document_chunks"
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["organization_id", "document_id"],
+            ["documents.organization_id", "documents.id"],
+            name="fk_chunks_document_same_organization",
+            ondelete="CASCADE",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -34,7 +44,6 @@ class DocumentChunk(Base):
 
     document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("documents.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )

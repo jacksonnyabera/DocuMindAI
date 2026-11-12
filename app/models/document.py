@@ -4,7 +4,9 @@ from datetime import datetime
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,6 +18,20 @@ class Document(Base):
     """A document uploaded by an organization's user."""
 
     __tablename__ = "documents"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "id",
+            name="uq_documents_organization_id_id",
+        ),
+        ForeignKeyConstraint(
+            ["organization_id", "uploaded_by"],
+            ["users.organization_id", "users.id"],
+            name="fk_documents_uploader_same_organization",
+            ondelete="RESTRICT",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True,
@@ -29,7 +45,6 @@ class Document(Base):
     )
 
     uploaded_by: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )

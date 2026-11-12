@@ -24,6 +24,11 @@ class User(Base):
             "email",
             name="uq_users_organization_email",
         ),
+        UniqueConstraint(
+            "organization_id",
+            "id",
+            name="uq_users_organization_id_id",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(

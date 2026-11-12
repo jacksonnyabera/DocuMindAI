@@ -33,3 +33,18 @@ Thumbs.db
 build/
 dist/
 *.egg-info/
+storage/
+
+
+# Private database backups
+documind_backup.dump
+*.dump
+
+# Private uploaded documents and backups
+storage/
+storage_backup_*/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
