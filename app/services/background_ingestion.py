@@ -2,9 +2,8 @@
 import logging
 import uuid
 
-from app.core.config import settings
 from app.db.session import get_session_factory
-from app.embeddings.fake import FakeEmbeddingProvider
+from app.embeddings.provider import get_embedding_provider
 from app.services.ingestion_service import ingest_document
 
 
@@ -20,16 +19,13 @@ def process_document_in_background(
     db = get_session_factory()()
 
     try:
-        if settings.environment != "development":
-            raise RuntimeError(
-                "A production embedding provider has not been configured."
-            )
+        embedding_provider = get_embedding_provider()
 
         ingest_document(
             db=db,
             document_id=document_id,
             organization_id=organization_id,
-            embedding_provider=FakeEmbeddingProvider(dimensions=16),
+            embedding_provider=embedding_provider,
         )
 
         logger.info("Document %s processed successfully.", document_id)

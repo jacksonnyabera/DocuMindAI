@@ -88,7 +88,7 @@ def ingest_document(
                 page_number=chunk["page_number"],
                 chunk_index=chunk["chunk_index"],
                 content=chunk["text"],
-                embedding=embedding,
+                embedding_vector=embedding,
                 metadata_json={
                     "filename": chunk["filename"],
                     "chunk_index": chunk["chunk_index"],

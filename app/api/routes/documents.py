@@ -18,7 +18,7 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.document import Document
 from app.models.user import User
-from app.embeddings.fake import FakeEmbeddingProvider
+from app.embeddings.provider import get_embedding_provider
 from app.services.ingestion_service import ingest_document
 
 from app.services.background_ingestion import process_document_in_background
@@ -159,27 +159,21 @@ def upload_document(
     finally:
         file.file.close()
 
+
 @router.post("/{document_id}/process")
 def process_uploaded_document(
     document_id: uuid.UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Extract PDF text and save embedded document chunks."""
-
-    # Fake embeddings are for local pipeline testing only.
-    if settings.environment != "development":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="A production embedding provider is not configured.",
-        )
+    """Extract PDF text and save semantic document embeddings."""
 
     try:
         return ingest_document(
             db=db,
             document_id=document_id,
             organization_id=current_user.organization_id,
-            embedding_provider=FakeEmbeddingProvider(dimensions=16),
+            embedding_provider=get_embedding_provider(),
         )
 
     except LookupError:

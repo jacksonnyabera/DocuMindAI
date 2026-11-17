@@ -11,6 +11,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.db.base import Base
 
@@ -63,8 +64,15 @@ class DocumentChunk(Base):
         nullable=False,
     )
 
+    # Legacy JSONB embeddings. Retained during migration.
     embedding: Mapped[list | None] = mapped_column(
         JSONB,
+        nullable=True,
+    )
+
+    # Native pgvector embeddings for semantic similarity search.
+    embedding_vector: Mapped[list[float] | None] = mapped_column(
+        Vector(384),
         nullable=True,
     )
 

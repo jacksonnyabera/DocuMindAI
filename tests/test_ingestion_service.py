@@ -111,7 +111,7 @@ def test_successful_document_ingestion(
         db=db,
         document_id=document.id,
         organization_id=organization.id,
-        embedding_provider=FakeEmbeddingProvider(),
+        embedding_provider=FakeEmbeddingProvider(dimensions=384),
     )
 
     assert result["status"] == "ready"
@@ -128,7 +128,9 @@ def test_successful_document_ingestion(
     )
 
     assert len(saved_chunks) == 2
-    assert saved_chunks[0].embedding is not None
+    assert saved_chunks[0].embedding_vector is not None
+    assert len(saved_chunks[0].embedding_vector) == 384
+    assert saved_chunks[0].embedding is None
     assert saved_chunks[0].page_number == 1
 
 
