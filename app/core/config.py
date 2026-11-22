@@ -1,4 +1,5 @@
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +17,11 @@ class Settings(BaseSettings):
 
     secret_key: str = ""
     access_token_expire_minutes: int = 30
+
+    # LLM configuration
+    llm_provider: str = "gemini"
+    gemini_api_key: SecretStr = SecretStr("")
+    gemini_model: str = "gemini-2.5-flash"
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -4,9 +4,11 @@ from datetime import datetime
 from sqlalchemy import (
     DateTime,
     ForeignKey,
+    Index,
     String,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -74,3 +76,22 @@ class User(Base):
         "Organization",
         back_populates="users",
     )
+
+    __table_args__ = (
+    UniqueConstraint(
+        "organization_id",
+        "email",
+        name="uq_users_organization_email",
+    ),
+    UniqueConstraint(
+        "organization_id",
+        "id",
+        name="uq_users_organization_id_id",
+    ),
+    Index(
+        "uq_users_email_lower",
+        text("lower(trim(email))"),
+        unique=True,
+    ),
+)
+
