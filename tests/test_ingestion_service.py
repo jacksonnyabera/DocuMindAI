@@ -218,3 +218,56 @@ def test_invalid_embedding_rolls_back_ingestion(
     )
 
     assert saved_chunks == []
+
+
+def test_oversized_pdf_fails_without_generating_embeddings(
+    db_context,
+    monkeypatch,
+):
+    db = db_context["db"]
+    document = db_context["document"]
+    organization = db_context["organization"]
+
+    monkeypatch.setattr(
+        ingestion_service,
+        "process_pdf",
+        lambda path: (_ for _ in ()).throw(
+            ValueError("PDF exceeds the maximum allowed page count of 100 pages.")
+        ),
+    )
+
+    class TrackingEmbeddingProvider:
+        dimensions = 384
+
+        def embed_documents(self, texts):
+            raise AssertionError(
+                "Embeddings must not be generated for oversized PDFs."
+            )
+
+        def embed_query(self, text):
+            raise NotImplementedError
+
+    with pytest.raises(ValueError, match="maximum allowed page count"):
+        ingestion_service.ingest_document(
+            db=db,
+            document_id=document.id,
+            organization_id=organization.id,
+            embedding_provider=TrackingEmbeddingProvider(),
+        )
+
+    db.expire_all()
+
+    refreshed_document = db.get(Document, document.id)
+
+    assert refreshed_document.status == "failed"
+
+    saved_chunks = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.document_id == document.id,
+            DocumentChunk.organization_id == organization.id,
+        )
+        .all()
+    )
+
+    assert saved_chunks == []

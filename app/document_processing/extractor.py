@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pymupdf as fitz 
-
+from app.core.config import settings
 
 
 def extract_pdf(file_path: str) -> dict:
@@ -28,8 +28,15 @@ def extract_pdf(file_path: str) -> dict:
             if document.is_encrypted:
                 raise ValueError("Encrypted PDFs are not supported")
 
+            if len(document) > settings.max_pdf_pages:
+                raise ValueError(
+                     f"PDF exceeds the maximum allowed page count "
+                     f"of {settings.max_pdf_pages} pages."
+                )
+
             if len(document) == 0:
                 raise ValueError("The PDF contains no pages")
+                
 
             for page_number, page in enumerate(document, start=1):
                 text = page.get_text("text").strip()

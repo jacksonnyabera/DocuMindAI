@@ -75,3 +75,42 @@ def test_empty_pdf(tmp_path):
 
     with pytest.raises(ValueError, match="OCR"):
         extract_pdf(str(file_path))
+
+
+def test_extract_pdf_accepts_exactly_100_pages(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "max_pdf_pages", 100)
+
+    pdf_path = tmp_path / "100_pages.pdf"
+    document = pymupdf.open()
+
+    for _ in range(100):
+        page = document.new_page()
+        page.insert_text((72, 72), "Test page content")
+
+    document.save(pdf_path)
+    document.close()
+
+    result = extract_pdf(str(pdf_path))
+
+    assert result["total_pages"] == 100
+
+
+def test_extract_pdf_rejects_101_pages(tmp_path, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "max_pdf_pages", 100)
+
+    pdf_path = tmp_path / "101_pages.pdf"
+    document = pymupdf.open()
+
+    for _ in range(101):
+        page = document.new_page()
+        page.insert_text((72, 72), "Test page content")
+
+    document.save(pdf_path)
+    document.close()
+
+    with pytest.raises(ValueError, match="maximum allowed page count"):
+        extract_pdf(str(pdf_path))
