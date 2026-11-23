@@ -1,13 +1,9 @@
-import uuid
 
-import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jwt.exceptions import InvalidTokenError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
-from app.core.tokens import ALGORITHM
+from app.core.tokens import decode_access_token
 from app.db.session import get_db
 from app.models.user import User
 
@@ -27,25 +23,20 @@ def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    if not settings.secret_key:
+    try:
+        payload = decode_access_token(token)
+
+    except RuntimeError:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication is not configured.",
         )
 
-    try:
-        payload = jwt.decode(
-            token,
-            settings.secret_key,
-            algorithms=[ALGORITHM],
-            options={"require": ["sub", "org", "exp", "iat"]},
-        )
-
-        user_id = uuid.UUID(payload["sub"])
-        organization_id = uuid.UUID(payload["org"])
-
-    except (InvalidTokenError, ValueError, TypeError, KeyError):
+    except ValueError:
         raise credentials_error
+
+    user_id = payload["sub"]
+    organization_id = payload["org"]
 
     user = (
         db.query(User)

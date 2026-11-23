@@ -1,7 +1,7 @@
 import uuid
 
 import pytest
-
+from pydantic import SecretStr
 from app.core.tokens import (
     create_access_token,
     decode_access_token,
@@ -32,7 +32,7 @@ def test_token_signed_with_wrong_secret_is_rejected(monkeypatch):
 
     monkeypatch.setattr(
         "app.core.tokens.settings.secret_key",
-        "a-different-secret-key",
+        SecretStr("a-different-secret-key-for-testing-only"),
     )
 
     with pytest.raises(ValueError):
@@ -43,6 +43,8 @@ def test_token_with_invalid_uuid_claims_is_rejected():
     import jwt
     from app.core.config import settings
 
+    secret = settings.secret_key.get_secret_value()
+
     token = jwt.encode(
         {
             "sub": "not-a-uuid",
@@ -50,7 +52,7 @@ def test_token_with_invalid_uuid_claims_is_rejected():
             "exp": 4102444800,
             "iat": 1760000000,
         },
-        settings.secret_key,
+        secret,
         algorithm="HS256",
     )
 

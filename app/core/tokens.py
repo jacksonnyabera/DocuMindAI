@@ -17,10 +17,13 @@ def create_access_token(
 ) -> str:
     """Create a signed JWT access token."""
 
-    if not settings.secret_key:
+    secret = settings.secret_key.get_secret_value()
+
+    if not secret:
         raise RuntimeError("SECRET_KEY is not configured.")
 
-    expires_at = datetime.now(timezone.utc) + timedelta(
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(
         minutes=settings.access_token_expire_minutes
     )
 
@@ -28,12 +31,12 @@ def create_access_token(
         "sub": str(user_id),
         "org": str(organization_id),
         "exp": expires_at,
-        "iat": datetime.now(timezone.utc),
+        "iat": now,
     }
 
     return jwt.encode(
         payload,
-        settings.secret_key,
+        secret,
         algorithm=ALGORITHM,
     )
 
@@ -41,13 +44,15 @@ def create_access_token(
 def decode_access_token(token: str) -> dict:
     """Verify and decode a JWT access token."""
 
-    if not settings.secret_key:
+    secret = settings.secret_key.get_secret_value()
+
+    if not secret:
         raise RuntimeError("SECRET_KEY is not configured.")
 
     try:
         payload = jwt.decode(
             token,
-            settings.secret_key,
+            secret,
             algorithms=[ALGORITHM],
             options={"require": ["sub", "org", "exp", "iat"]},
         )

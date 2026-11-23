@@ -45,11 +45,11 @@ def register(
 ):
     """Register a company and its first owner account."""
 
-    if not settings.secret_key:
+    if not settings.secret_key.get_secret_value():
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication is not configured.",
-        )
+    )
 
     existing_user = (
         db.query(User)
@@ -108,11 +108,11 @@ def login(
 ):
     """Authenticate a user and return an access token."""
 
-    if not settings.secret_key:
+    if not settings.secret_key.get_secret_value():
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authentication is not configured.",
-        )
+    )
 
     email = credentials.username.strip().lower()
 

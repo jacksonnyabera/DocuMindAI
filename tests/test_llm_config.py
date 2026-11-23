@@ -31,4 +31,6 @@ def test_existing_database_configuration_is_preserved():
     )
 
     assert settings.database_url == "postgresql://test"
-    assert settings.secret_key == "test-jwt-secret"
+    assert isinstance(settings.secret_key, SecretStr)
+    assert settings.secret_key.get_secret_value() == "test-jwt-secret"
+    assert "test-jwt-secret" not in repr(settings)

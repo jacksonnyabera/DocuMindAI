@@ -30,7 +30,7 @@ class SentenceTransformerEmbeddingProvider:
             device=device,
         )
 
-        dimensions = self.model.get_sentence_embedding_dimension()
+        dimensions = self.model.get_embedding_dimension()
 
         if dimensions != 384:
             raise ValueError(
