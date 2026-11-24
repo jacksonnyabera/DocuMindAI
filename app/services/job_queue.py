@@ -17,6 +17,22 @@ BASE_RETRY_DELAY_SECONDS = 30
 MAX_RETRY_DELAY_SECONDS = 3600
 
 
+def _accumulate_attempt_duration(job: DocumentJob, finished_at: datetime) -> None:
+    """Accumulate execution time for the current attempt, excluding queue wait."""
+    started_at = getattr(job, "attempt_started_at", None)
+    if started_at is None:
+        return
+
+    elapsed_ms = max(
+        0,
+        int((finished_at - started_at).total_seconds() * 1000),
+    )
+    job.processing_duration_ms = (
+        getattr(job, "processing_duration_ms", 0) + elapsed_ms
+    )
+    job.attempt_started_at = None
+
+
 def claim_next_job(
     session_factory: Any,
     worker_id: str,
@@ -49,6 +65,8 @@ def claim_next_job(
         ).scalars().all()
 
         for expired in exhausted:
+            _accumulate_attempt_duration(expired, now)
+            expired.finished_at = now
             expired.status = "failed"
             expired.locked_at = None
             expired.locked_by = None
@@ -97,7 +115,12 @@ def claim_next_job(
             db.commit()
             return None
 
+        if job.status == "processing":
+            _accumulate_attempt_duration(job, now)
+
         job.status = "processing"
+        job.attempt_started_at = now
+        job.finished_at = None
         job.attempts += 1
         job.locked_at = now
         job.locked_by = worker_id
@@ -137,11 +160,14 @@ def mark_job_completed(
             db.rollback()
             return False
 
+        now = datetime.now(timezone.utc)
+        _accumulate_attempt_duration(job, now)
         job.status = "completed"
+        job.finished_at = now
         job.locked_at = None
         job.locked_by = None
         job.last_error = None
-        job.updated_at = datetime.now(timezone.utc)
+        job.updated_at = now
 
         db.commit()
         return True
@@ -177,6 +203,8 @@ def retry_or_fail_job(
             )
             return False
 
+        _accumulate_attempt_duration(record, now)
+
         # Store the exception class, not its raw message, to avoid
         # accidentally persisting API keys or other sensitive details.
         record.last_error = type(error).__name__
@@ -186,6 +214,7 @@ def retry_or_fail_job(
 
         if record.attempts >= record.max_attempts:
             record.status = "failed"
+            record.finished_at = now
 
             document = db.execute(
                 select(Document).where(
@@ -202,6 +231,7 @@ def retry_or_fail_job(
                 MAX_RETRY_DELAY_SECONDS,
             )
             record.status = "pending"
+            record.finished_at = None
             record.available_at = now + timedelta(seconds=delay)
 
         db.commit()

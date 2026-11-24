@@ -245,3 +245,151 @@ def test_old_worker_cannot_complete_reclaimed_job(postgres_session_factory):
 
     finally:
         cleanup_test_records(factory, records)
+from datetime import datetime, timedelta, timezone
+
+from app.services.job_queue import retry_or_fail_job
+
+
+def test_completed_job_records_processing_duration(postgres_session_factory):
+    factory = postgres_session_factory
+    records = create_test_job(factory)
+    worker_id = "metrics-completion-worker"
+
+    try:
+        started_at = datetime.now(timezone.utc) - timedelta(seconds=5)
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            job.status = "processing"
+            job.locked_by = worker_id
+            job.locked_at = started_at
+            job.attempt_started_at = started_at
+            db.commit()
+
+        assert mark_job_completed(factory, records["job_id"], worker_id)
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            assert job.status == "completed"
+            assert job.finished_at is not None
+            assert job.attempt_started_at is None
+            assert job.processing_duration_ms >= 5000
+            assert job.locked_by is None
+    finally:
+        cleanup_test_records(factory, records)
+
+
+def test_retry_accumulates_processing_time_without_finishing_job(
+    postgres_session_factory,
+):
+    factory = postgres_session_factory
+    records = create_test_job(factory, attempts=1, max_attempts=3)
+    worker_id = "metrics-retry-worker"
+
+    try:
+        started_at = datetime.now(timezone.utc) - timedelta(seconds=4)
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            job.status = "processing"
+            job.attempts = 1
+            job.locked_by = worker_id
+            job.locked_at = started_at
+            job.attempt_started_at = started_at
+            db.commit()
+
+        result = retry_or_fail_job(
+            factory,
+            {"id": records["job_id"]},
+            worker_id,
+            RuntimeError("Temporary processing failure"),
+        )
+        assert result is True
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            assert job.status == "pending"
+            assert job.finished_at is None
+            assert job.attempt_started_at is None
+            assert job.processing_duration_ms >= 4000
+            assert job.available_at > datetime.now(timezone.utc)
+            assert job.last_error == "RuntimeError"
+    finally:
+        cleanup_test_records(factory, records)
+
+
+def test_terminal_failure_records_finished_at_and_duration(
+    postgres_session_factory,
+):
+    factory = postgres_session_factory
+    records = create_test_job(factory, attempts=2, max_attempts=3)
+    worker_id = "metrics-failure-worker"
+
+    try:
+        started_at = datetime.now(timezone.utc) - timedelta(seconds=3)
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            job.status = "processing"
+            job.attempts = 3
+            job.locked_by = worker_id
+            job.locked_at = started_at
+            job.attempt_started_at = started_at
+            db.commit()
+
+        result = retry_or_fail_job(
+            factory,
+            {"id": records["job_id"]},
+            worker_id,
+            RuntimeError("Final processing failure"),
+        )
+        assert result is True
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            assert job.status == "failed"
+            assert job.finished_at is not None
+            assert job.attempt_started_at is None
+            assert job.processing_duration_ms >= 3000
+            assert job.locked_by is None
+    finally:
+        cleanup_test_records(factory, records)
+
+
+def test_stale_job_reclaim_accumulates_abandoned_attempt_duration(
+    postgres_session_factory,
+):
+    factory = postgres_session_factory
+    records = create_test_job(factory, attempts=1, max_attempts=3)
+
+    try:
+        now = datetime.now(timezone.utc)
+        original_started_at = now - timedelta(seconds=25)
+        stale_lock_time = now - timedelta(hours=2)
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            job.status = "processing"
+            job.attempts = 1
+            job.locked_by = "crashed-worker"
+            job.locked_at = stale_lock_time
+            job.attempt_started_at = original_started_at
+            db.commit()
+
+        reclaimed = claim_next_job(factory, "replacement-worker")
+
+        assert reclaimed is not None
+        assert reclaimed["id"] == records["job_id"]
+        assert reclaimed["attempts"] == 2
+
+        with factory() as db:
+            job = db.get(DocumentJob, records["job_id"])
+            assert job.status == "processing"
+            assert job.locked_by == "replacement-worker"
+            assert job.attempts == 2
+            assert job.processing_duration_ms >= 25000
+            assert job.attempt_started_at >= original_started_at
+            assert job.attempt_started_at > stale_lock_time
+            assert job.finished_at is None
+    finally:
+        cleanup_test_records(factory, records)
