@@ -5,6 +5,7 @@ import uuid
 
 from sqlalchemy import select
 
+from app.core.logging_config import configure_logging
 from app.db.session import get_session_factory
 from app.embeddings.provider import get_embedding_provider
 from app.models.document import Document
@@ -107,10 +108,7 @@ def process_one_job(worker_id: str) -> bool:
 def main() -> None:
     worker_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:12]}"
 
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
+    configure_logging()
 
     logger.info("DocuMind worker started: %s", worker_id)
 

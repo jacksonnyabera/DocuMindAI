@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "DocuMind AI"
     environment: str = "development"
     debug: bool = False
+    log_level: str = "INFO"
 
     database_url: str = ""
 
