@@ -90,8 +90,9 @@ class User(Base):
     ),
     Index(
         "uq_users_email_lower",
-        text("lower(trim(email))"),
+        text("lower(TRIM(BOTH FROM email))"),
         unique=True,
     ),
 )
+
 

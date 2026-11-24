@@ -1,6 +1,7 @@
 import math
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.document_processing.pipeline import process_pdf
@@ -15,20 +16,30 @@ def ingest_document(
     organization_id: uuid.UUID,
     embedding_provider: EmbeddingProvider,
 ) -> dict:
-    """Process a PDF and persist its embedded chunks."""
+    """Process a PDF and persist its embedded chunks exactly once when ready."""
 
-    document = (
-        db.query(Document)
-        .filter(
+    document = db.execute(
+        select(Document)
+        .where(
             Document.id == document_id,
             Document.organization_id == organization_id,
         )
         .with_for_update()
-        .first()
-    )
+    ).scalar_one_or_none()
 
     if document is None:
         raise LookupError("Document not found in this organization.")
+
+    # A previous worker may have committed the document before crashing
+    # while updating the corresponding queue job.
+    if document.status == "ready":
+        return {
+            "document_id": str(document.id),
+            "filename": document.filename,
+            "total_pages": document.total_pages,
+            "total_chunks": document.total_chunks,
+            "status": "ready",
+        }
 
     try:
         document.status = "processing"
@@ -121,17 +132,19 @@ def ingest_document(
 
         # Record failure in a fresh transaction after rollback.
         try:
-            failed_document = (
-                db.query(Document)
-                .filter(
+            failed_document = db.execute(
+                select(Document)
+                .where(
                     Document.id == document_id,
                     Document.organization_id == organization_id,
                 )
                 .with_for_update()
-                .first()
-            )
+            ).scalar_one_or_none()
 
-            if failed_document is not None:
+            if (
+                failed_document is not None
+                and failed_document.status != "ready"
+            ):
                 failed_document.status = "failed"
                 db.commit()
 

@@ -1,10 +1,8 @@
-
 import uuid
 from pathlib import Path
 
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -16,12 +14,11 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.document import Document
-from app.models.user import User
 from app.embeddings.provider import get_embedding_provider
+from app.models.document import Document
+from app.models.document_job import DocumentJob
+from app.models.user import User
 from app.services.ingestion_service import ingest_document
-
-from app.services.background_ingestion import process_document_in_background
 
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -52,12 +49,11 @@ def safe_filename(filename: str | None) -> str:
     status_code=status.HTTP_201_CREATED,
 )
 def upload_document(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Upload a PDF and register it in the user's organization."""
+    """Save a PDF and enqueue its processing in one database transaction."""
 
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -73,7 +69,6 @@ def upload_document(
     organization_dir = (
         Path(settings.storage_dir) / str(organization_id)
     )
-
     storage_path = organization_dir / f"{document_id}.pdf"
 
     total_bytes = 0
@@ -126,21 +121,27 @@ def upload_document(
             total_chunks=0,
         )
 
+        job = DocumentJob(
+            organization_id=organization_id,
+            document_id=document_id,
+            status="pending",
+            attempts=0,
+            max_attempts=3,
+        )
+
+        # Both records are committed together. The API cannot create a
+        # document without its corresponding persistent processing job.
         db.add(document)
+        db.add(job)
         db.commit()
         db.refresh(document)
-
-        background_tasks.add_task(
-            process_document_in_background,
-            document_id,
-            organization_id,
-        )
 
         return {
             "id": str(document.id),
             "filename": document.filename,
             "status": document.status,
-            "message": "PDF uploaded successfully.",
+            "job_status": job.status,
+            "message": "PDF uploaded and queued for processing.",
         }
 
     except HTTPException:
@@ -166,7 +167,7 @@ def process_uploaded_document(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Extract PDF text and save semantic document embeddings."""
+    """Manually process a document belonging to the current organization."""
 
     try:
         return ingest_document(
