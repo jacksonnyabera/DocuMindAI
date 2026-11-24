@@ -114,3 +114,27 @@ def test_extract_pdf_rejects_101_pages(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="maximum allowed page count"):
         extract_pdf(str(pdf_path))
+
+def test_extract_pdf_accepts_text_at_limit(sample_pdf, monkeypatch):
+    from app.core.config import settings
+
+    result = extract_pdf(str(sample_pdf))
+    text_length = sum(len(page["text"]) for page in result["pages"])
+
+    monkeypatch.setattr(settings, "max_pdf_text_chars", text_length)
+
+    result = extract_pdf(str(sample_pdf))
+
+    assert result["total_pages"] == 2
+
+
+def test_extract_pdf_rejects_text_exceeding_limit(
+    sample_pdf,
+    monkeypatch,
+):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "max_pdf_text_chars", 10)
+
+    with pytest.raises(ValueError, match="maximum allowed extracted text"):
+        extract_pdf(str(sample_pdf))

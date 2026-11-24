@@ -21,6 +21,7 @@ def extract_pdf(file_path: str) -> dict:
         raise ValueError("Only PDF files are supported")
 
     pages = []
+    total_text_chars = 0
 
     try:
         with fitz.open(path) as document:
@@ -40,6 +41,13 @@ def extract_pdf(file_path: str) -> dict:
 
             for page_number, page in enumerate(document, start=1):
                 text = page.get_text("text").strip()
+                total_text_chars += len(text)
+
+                if total_text_chars > settings.max_pdf_text_chars:
+                    raise ValueError(
+                        "PDF exceeds the maximum allowed extracted text "
+                        f"limit of {settings.max_pdf_text_chars} characters."
+                    )
 
                 pages.append({
                     "page_number": page_number,

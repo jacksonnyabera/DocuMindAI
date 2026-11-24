@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     storage_dir: str = "storage"
     max_upload_size: int = 10 * 1024 * 1024
     max_pdf_pages: int = 100
+    max_pdf_text_chars: int = 1_000_000
 
     secret_key: SecretStr = SecretStr("")
     access_token_expire_minutes: int = 30
