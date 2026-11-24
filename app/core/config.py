@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
 
+    # Comma-separated email addresses allowed to administer the platform.
+    platform_admin_emails: str = ""
+
     database_url: str = ""
 
     storage_dir: str = "storage"
