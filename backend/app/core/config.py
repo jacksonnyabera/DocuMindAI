@@ -1,4 +1,6 @@
 
+from pathlib import Path
+
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -42,10 +44,15 @@ class Settings(BaseSettings):
                     "at least 32 characters."
                 )
 
+        storage_path = Path(self.storage_dir)
+        if not storage_path.is_absolute():
+            backend_root = Path(__file__).resolve().parents[2]
+            self.storage_dir = str((backend_root / storage_path).resolve())
+
         return self
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=Path(__file__).resolve().parents[3] / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
