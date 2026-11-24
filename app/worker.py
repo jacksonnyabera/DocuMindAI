@@ -16,6 +16,7 @@ from app.services.job_queue import (
     mark_job_completed,
     retry_or_fail_job,
 )
+from app.services.worker_registry import WorkerProcessHeartbeat
 
 logger = logging.getLogger("documind.worker")
 
@@ -23,7 +24,10 @@ POLL_INTERVAL_SECONDS = 2
 ERROR_BACKOFF_SECONDS = 5
 
 
-def process_one_job(worker_id: str) -> bool:
+def process_one_job(
+    worker_id: str,
+    worker_heartbeat: WorkerProcessHeartbeat | None = None,
+) -> bool:
     session_factory = get_session_factory()
     job = claim_next_job(session_factory, worker_id)
 
@@ -43,6 +47,9 @@ def process_one_job(worker_id: str) -> bool:
     )
 
     try:
+        if worker_heartbeat is not None:
+            worker_heartbeat.set_current_job(job_id)
+
         with JobLeaseHeartbeat(
             session_factory=session_factory,
             job_id=job_id,
@@ -102,6 +109,16 @@ def process_one_job(worker_id: str) -> bool:
                 job_id,
             )
 
+    finally:
+        if worker_heartbeat is not None:
+            try:
+                worker_heartbeat.set_current_job(None)
+            except Exception:
+                logger.exception(
+                    "Could not clear current job for worker %s.",
+                    worker_id,
+                )
+
     return True
 
 
@@ -109,30 +126,37 @@ def main() -> None:
     worker_id = f"{socket.gethostname()}-{uuid.uuid4().hex[:12]}"
 
     configure_logging()
+    session_factory = get_session_factory()
 
-    logger.info("DocuMind worker started: %s", worker_id)
+    with WorkerProcessHeartbeat(
+        session_factory=session_factory,
+        worker_id=worker_id,
+    ) as worker_heartbeat:
+        logger.info("DocuMind worker started: %s", worker_id)
 
-    try:
-        while True:
-            try:
-                claimed = process_one_job(worker_id)
+        try:
+            while True:
+                try:
+                    claimed = process_one_job(
+                        worker_id,
+                        worker_heartbeat,
+                    )
 
-                if not claimed:
-                    time.sleep(POLL_INTERVAL_SECONDS)
+                    if not claimed:
+                        time.sleep(POLL_INTERVAL_SECONDS)
 
-            except KeyboardInterrupt:
-                raise
-            except Exception:
-                logger.exception(
-                    "Worker loop encountered an unexpected error."
-                )
-                time.sleep(ERROR_BACKOFF_SECONDS)
+                except KeyboardInterrupt:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "Worker loop encountered an unexpected error."
+                    )
+                    time.sleep(ERROR_BACKOFF_SECONDS)
 
-    except KeyboardInterrupt:
-        logger.info("Worker shutdown requested.")
+        except KeyboardInterrupt:
+            logger.info("Worker shutdown requested.")
 
-    finally:
-        logger.info("DocuMind worker stopped: %s", worker_id)
+    logger.info("DocuMind worker stopped: %s", worker_id)
 
 
 if __name__ == "__main__":
